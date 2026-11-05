@@ -1,6 +1,6 @@
 {
   "name": "token-profile",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "在 Claude app 裡用個人檔案頁面顯示累計 token、單日最高、連續天數與熱力圖。",
   "types": "./types/index.d.ts",
   "license": "PolyForm-Noncommercial-1.0.0"

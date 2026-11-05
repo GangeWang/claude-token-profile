@@ -200,6 +200,7 @@ test('the entry shows today and closes an open page', async ($, on) => {
   const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
   expect((await ui.find({ type: 'Text', text: /^400\.0M$/ }))?.text).toBe('400.0M')
   expect((await ui.find({ type: 'Text', text: /收起/ }))?.text).toContain('收起')
+  expect((await ui.find({ type: 'Text', text: /●/ }))?.props?.color).toBe('#d97757')
 
   await ui.press({ key: 'token-entry' })
   expect(closed).toEqual(['token-profile'])

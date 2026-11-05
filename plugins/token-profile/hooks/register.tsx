@@ -215,13 +215,14 @@ export const register: Register = on => {
     const today = data.days[data.today] ?? 0
 
     return (
-      <Box>
+      <Box flexDirection="row">
+        {/* Outside the Button: a desktop's native button draws its own text color. */}
+        <Text color="#d97757">● </Text>
         <Button
           key="token-entry"
           plain
           onPress={() => void (shown ? closePage($) : openPage($))}
         >
-          <Text color="#d97757">● </Text>
           <Text dimColor>今日 </Text>
           <Text weight="medium">{formatTokens(today)}</Text>
           <Text dimColor> · 累計 </Text>

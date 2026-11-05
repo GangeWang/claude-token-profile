@@ -44,6 +44,7 @@ ACCOUNT_FILE = (CONFIG if CUSTOM_CONFIG else HOME) / ".claude.json"
 PROJECTS = CONFIG / "projects"
 DATA = CONFIG / "token-profile"
 LEDGER = DATA / "usage.sqlite"
+OWN_AVATAR = DATA / "avatar.webp"
 MACHINE_ID = DATA / "machine-id"
 # The latest report, for every open conversation to follow.
 SHARED_REPORT = DATA / "report.json"
@@ -227,16 +228,25 @@ def cached_avatar(account_id):
     return None
 
 
+def shared_avatar(account_id):
+    return SYNC / f"avatar-{account_id}.webp"
+
+
 def avatar(account_id):
-    """The account's picture as base64 WebP; a saved copy outlives the cache."""
-    saved = LEDGER.with_name("avatar.webp")
+    """The account's picture as base64 WebP; a saved copy outlives the cache.
+
+    Windows locks the cache index while the app runs, so a computer that cannot
+    read its own cache shows the copy another computer of this account shared.
+    """
+    saved = OWN_AVATAR
     if not saved.exists() or time.time() - saved.stat().st_mtime > AVATAR_CHECK_S:
         picture = cached_avatar(account_id) if account_id and WEB_CACHE.is_dir() else None
         if picture:
             saved.write_bytes(picture)
         elif saved.exists():
             saved.touch()
-    return base64.b64encode(saved.read_bytes()).decode() if saved.exists() else None
+    picture = saved if saved.exists() else shared_avatar(account_id)
+    return base64.b64encode(picture.read_bytes()).decode() if picture.exists() else None
 
 
 def local_usage(db):
@@ -316,10 +326,14 @@ def share(record):
     """
     clear_interrupted_git()
     mine = SYNC / f"{machine_id()}.json"
+    account_id = signed_in_account().get("accountUuid")
     for attempt in range(PUSH_TRIES):
         git("fetch")
         git("reset", "--hard", "@{upstream}")
         mine.write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")
+        # Only a computer that read its own cache shares, so a copy never overwrites it.
+        if account_id and OWN_AVATAR.exists():
+            shutil.copyfile(OWN_AVATAR, shared_avatar(account_id))
         git("add", "-A")
         if run_git("diff", "--cached", "--quiet").returncode == 0:
             return
