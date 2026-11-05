@@ -59,6 +59,23 @@
 1. 依上方步驟安裝外掛，並下載同步 repo。
 2. 累計數字會回來，這台電腦會以新電腦身分繼續累計。最後一次同步之後的用量無法找回。
 
+## 解除安裝
+
+1. 在 Claude app 的 Plugins 畫面移除外掛和 marketplace，或在終端機執行：
+
+   ```bash
+   claude plugin uninstall token-profile@token-profile
+   claude plugin marketplace remove token-profile
+   ```
+
+2. 完全結束 Claude app 再重新打開。
+
+解除安裝不會刪除 `~/.claude/token-profile`，所以重新安裝後帳本、電腦 ID 和同步都會接上。
+`~/.claude/plugins/cache/token-profile` 可能暫時留著，可以手動刪除。
+
+要完全清除時，再刪除 `~/.claude/token-profile`。之後如果還要用同一個同步 repo，請先備份這個資料夾；
+電腦 ID 不見後，這台會被當成新電腦，留在 `~/.claude/projects` 的用量會重複計算。
+
 ## 注意事項
 
 - `~/.claude/projects` 和 `~/.claude/token-profile` 要一起還原。只還原 `projects` 且有同步時，
