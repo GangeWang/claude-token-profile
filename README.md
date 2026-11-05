@@ -43,6 +43,8 @@ Remote Control 視窗不會顯示入口和頁面，這時 `/token-profile` 會�
 
 換電腦時，把 `~/.claude/projects` 和 `~/.claude/token-profile` 一起搬，用量才不會重複計算。
 
+完整步驟見[安裝、備份與還原流程](docs/operations.md)。
+
 ## 支援平台
 
 | 平台 | 狀態 |

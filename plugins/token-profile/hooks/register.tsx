@@ -46,15 +46,13 @@ const collect = async ($: EngineInterface) => {
 
 const FOLLOW_EVERY_MS = 5_000
 
-// Rebuilt by session.start after a reload, so neither needs $.state.
-let dataDir: string | undefined
+// Set again by the first tick after a reload, which only reloads the report once.
 let followedReportAt = 0
 let isFollowing = false
 
 const refresh = async ($: EngineInterface) => {
   try {
     const next = JSON.parse(await collect($)) as Report
-    dataDir = next.dataDir
     await update($, report, () => next)
     await update($, error, () => null)
   } catch (failure) {
@@ -62,10 +60,26 @@ const refresh = async ($: EngineInterface) => {
   }
 }
 
-const shareScreen = async ($: EngineInterface) => {
+const readScreen = async ($: EngineInterface, file: string) => {
+  if (!(await $.fs.exists(file))) return null
+  try {
+    return JSON.parse(await $.fs.read(file)) as SharedScreen
+  } catch {
+    return null // another conversation is writing it
+  }
+}
+
+// Written before this conversation changes, so a tick never undoes the change,
+// and over the file's own values, so a stale one here never undoes another's.
+const shareScreen = async ($: EngineInterface, change: Partial<SharedScreen>) => {
+  const dataDir = (await read($, report))?.dataDir
   if (!dataDir) return
-  const screen: SharedScreen = { view: await read($, view), isOpen: await read($, isOpen) }
-  await $.fs.write(`${dataDir}/ui.json`, JSON.stringify(screen))
+  const file = `${dataDir}/ui.json`
+  const shared = (await readScreen($, file)) ?? {
+    view: await read($, view),
+    isOpen: await read($, isOpen),
+  }
+  await $.fs.write(file, JSON.stringify({ ...shared, ...change }))
 }
 
 const showPage = async ($: EngineInterface) => {
@@ -81,28 +95,29 @@ const hidePage = async ($: EngineInterface) => {
 }
 
 const openPage = async ($: EngineInterface) => {
+  if (!(await read($, report))) await refresh($)
+  await shareScreen($, { isOpen: true })
   const opened = await showPage($)
-  await shareScreen($)
   await refresh($)
 
   return opened
 }
 
 const closePage = async ($: EngineInterface) => {
+  await shareScreen($, { isOpen: false })
   await hidePage($)
-  await shareScreen($)
 }
 
 const chooseView = async ($: EngineInterface, chosen: View) => {
+  await shareScreen($, { view: chosen })
   await update($, view, () => chosen)
-  await shareScreen($)
 }
 
 // Every conversation follows the same two files, so none shows its own numbers.
 const follow = async ($: EngineInterface) => {
+  const dataDir = (await read($, report))?.dataDir
   if (!dataDir) return
   const reportFile = `${dataDir}/report.json`
-  const screenFile = `${dataDir}/ui.json`
 
   if (await $.fs.exists(reportFile)) {
     const { mtimeMs } = await $.fs.stat(reportFile)
@@ -113,12 +128,11 @@ const follow = async ($: EngineInterface) => {
     }
   }
 
-  if (await $.fs.exists(screenFile)) {
-    const screen = JSON.parse(await $.fs.read(screenFile)) as SharedScreen
-    if (screen.view !== (await read($, view))) await update($, view, () => screen.view)
-    if (screen.isOpen !== (await read($, isOpen))) {
-      await (screen.isOpen ? showPage($) : hidePage($))
-    }
+  const screen = await readScreen($, `${dataDir}/ui.json`)
+  if (!screen) return
+  if (screen.view !== (await read($, view))) await update($, view, () => screen.view)
+  if (screen.isOpen !== (await read($, isOpen))) {
+    await (screen.isOpen ? showPage($) : hidePage($))
   }
 }
 
@@ -185,8 +199,8 @@ export const register: Register = on => {
   on('ui.close', async ($, e, next) => {
     const closed = await next(e)
     if (e.id === PANE && e.origin.kind === 'person') {
+      await shareScreen($, { isOpen: false })
       await update($, isOpen, () => false)
-      await shareScreen($)
     }
 
     return closed

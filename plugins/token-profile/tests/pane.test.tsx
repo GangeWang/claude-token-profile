@@ -158,6 +158,31 @@ test('every conversation follows the same numbers and screen', async ($, on) => 
   await band.unmount()
 })
 
+test('a tick never undoes a page opened from a stale screen file', async ($, on) => {
+  const files = { '/shared/ui.json': JSON.stringify({ view: 'daily', isOpen: false }) }
+  const closed: string[] = []
+  on('ui.close', (_: unknown, e: { id: string }) => {
+    closed.push(e.id)
+    return { value: undefined }
+  })
+  const clock = await start($, on, JSON.stringify(REPORT), 0, [], files)
+
+  await clock.advance(5_000)
+  expect(closed).toEqual([])
+  expect(JSON.parse(files['/shared/ui.json']).isOpen).toBe(true)
+})
+
+test('a change keeps what another conversation just shared', async ($, on) => {
+  const files: Record<string, string> = {}
+  await start($, on, JSON.stringify(REPORT), 0, [], files)
+
+  files['/shared/ui.json'] = JSON.stringify({ view: 'daily', isOpen: false })
+  const page = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await page.press({ key: 'weekly' })
+  expect(JSON.parse(files['/shared/ui.json']!)).toEqual({ view: 'weekly', isOpen: false })
+  await page.unmount()
+})
+
 const BAND = {
   plugin: 'token-profile',
   component: 'AbovePrompt',

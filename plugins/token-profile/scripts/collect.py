@@ -9,7 +9,9 @@ import base64
 import datetime as dt
 import json
 import os
+import random
 import re
+import shutil
 import socket
 import sqlite3
 import subprocess
@@ -50,6 +52,16 @@ SYNC = DATA / "sync"
 SYNC_STATUS = DATA / "last-sync"
 SYNC_EVERY_S = 10 * 60
 GIT_TIMEOUT_S = 30
+PUSH_TRIES = 4
+# Past every git's timeout, so no running git can still own the lock.
+STALE_LOCK_S = 2 * GIT_TIMEOUT_S
+# Commits work on a computer with no git identity of its own.
+GIT_IDENTITY = {
+    "GIT_AUTHOR_NAME": "token-profile",
+    "GIT_AUTHOR_EMAIL": "token-profile@users.noreply.github.com",
+    "GIT_COMMITTER_NAME": "token-profile",
+    "GIT_COMMITTER_EMAIL": "token-profile@users.noreply.github.com",
+}
 WEB_CACHE = web_cache_dir()
 WORKTREE = re.compile(r"[\\/]\.claude[\\/]worktrees[\\/]")
 AVATAR_CHECK_S = 24 * 60 * 60
@@ -268,7 +280,12 @@ def run_git(*args):
         encoding="utf-8",
         errors="replace",
         timeout=GIT_TIMEOUT_S,
-        env={**os.environ, "GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never"},
+        env={
+            **os.environ,
+            **GIT_IDENTITY,
+            "GIT_TERMINAL_PROMPT": "0",
+            "GCM_INTERACTIVE": "never",
+        },
     )
 
 
@@ -279,20 +296,39 @@ def git(*args):
         raise RuntimeError(next((l for l in lines if l.startswith(("fatal", "error"))), lines[0]))
 
 
+def clear_interrupted_git():
+    """A killed git leaves these behind, and every later sync would fail on them."""
+    repo = SYNC / ".git"
+    lock = repo / "index.lock"
+    if lock.exists() and time.time() - lock.stat().st_mtime > STALE_LOCK_S:
+        lock.unlink()
+    for leftover in (repo / "rebase-merge", repo / "rebase-apply"):
+        if leftover.exists():
+            run_git("rebase", "--abort")
+            shutil.rmtree(leftover, ignore_errors=True)
+
+
 def share(record):
-    """Publish this computer's file; each writes only its own, so pulls never clash."""
-    (SYNC / f"{machine_id()}.json").write_text(
-        json.dumps(record, ensure_ascii=False), encoding="utf-8"
-    )
-    git("add", "-A")
-    if run_git("diff", "--cached", "--quiet").returncode != 0:
-        git(
-            "-c", "user.name=token-profile",
-            "-c", "user.email=token-profile@users.noreply.github.com",
-            "commit", "-m", f"Update {record['name']}",
-        )
-    git("pull", "--rebase")
-    git("push")
+    """Publish this computer's file over the latest of everyone else's.
+
+    The file is rebuilt whole from the ledger, so nothing local needs keeping:
+    start from the remote each try, and a rejected push just tries again.
+    """
+    clear_interrupted_git()
+    mine = SYNC / f"{machine_id()}.json"
+    for attempt in range(PUSH_TRIES):
+        git("fetch")
+        git("reset", "--hard", "@{upstream}")
+        mine.write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")
+        git("add", "-A")
+        if run_git("diff", "--cached", "--quiet").returncode == 0:
+            return
+        git("commit", "-m", f"Update {record['name']}")
+        if attempt == PUSH_TRIES - 1:
+            git("push")
+        elif run_git("push").returncode == 0:
+            return
+        time.sleep(random.uniform(0.2, 1.5))  # another computer pushed first
 
 
 def all_records(record):
