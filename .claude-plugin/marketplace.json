@@ -1,0 +1,15 @@
+{
+  "name": "token-profile",
+  "owner": {
+    "name": "GangeWang"
+  },
+  "description": "Claude Code token 用量個人頁面",
+  "plugins": [
+    {
+      "name": "token-profile",
+      "source": "./plugins/token-profile",
+      "description": "在 Claude app 裡用個人檔案頁面顯示累計 token、單日最高、連續天數與熱力圖。",
+      "version": "0.1.0"
+    }
+  ]
+}
